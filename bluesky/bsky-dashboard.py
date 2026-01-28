@@ -121,6 +121,12 @@ DASHBOARD_HTML = """
   .post-card { background: #16202a; border: 1px solid #2f3336; border-radius: 12px;
                padding: 16px; margin-bottom: 12px; }
   .post-text { font-size: 15px; line-height: 1.5; white-space: pre-wrap; margin-bottom: 12px; }
+  .reply-context { background: #0f1419; border: 1px solid #2f3336; border-radius: 8px;
+                   padding: 10px 12px; margin-bottom: 10px; font-size: 13px; color: #71767b; }
+  .reply-context .reply-author { color: #1d9bf0; font-weight: 600; }
+  .reply-context .reply-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+                                 margin-bottom: 4px; color: #536471; }
+  .badge-reply { background: #1d4e7a; color: #1d9bf0; }
   .post-meta { font-size: 12px; color: #71767b; margin-bottom: 12px; }
   .post-actions { display: flex; gap: 8px; }
   .btn { padding: 8px 20px; border-radius: 20px; border: none; font-size: 14px;
@@ -202,6 +208,16 @@ DASHBOARD_HTML = """
 {% for post in filtered_posts %}
 <div class="post-card" id="post-{{ post.id }}">
   <span class="badge badge-{{ post.status }}">{{ post.status | upper }}</span>
+  {% if post.get('type') == 'reply' %}
+  <span class="badge badge-reply">↩ REPLY</span>
+  {% endif %}
+  {% if post.get('reply_to') %}
+  <div class="reply-context">
+    <div class="reply-label">Antwort auf</div>
+    <span class="reply-author">@{{ post.reply_to.author_handle }}</span>
+    <div>{{ post.reply_to.text_preview }}</div>
+  </div>
+  {% endif %}
   <div class="post-text post-text-display" id="text-{{ post.id }}">{{ post.text }}</div>
 
   <div class="edit-form" id="edit-{{ post.id }}">
@@ -406,6 +422,42 @@ def api_mark_posted(post_id):
             break
     save_queue(data)
     return jsonify({"ok": True})
+
+@app.route("/api/add", methods=["POST"])
+def api_add_post():
+    """Programmatically add a post or reply draft. Used by Chadd's scan scripts."""
+    token = request.headers.get("X-Token") or request.args.get("token")
+    if token != get_pin():
+        return jsonify({"error": "unauthorized"}), 401
+    
+    body = request.get_json() if request.is_json else {}
+    text = body.get("text", "").strip()
+    if not text:
+        return jsonify({"error": "text required"}), 400
+    
+    post = {
+        "id": uuid.uuid4().hex[:8],
+        "text": text,
+        "type": body.get("type", "post"),  # "post" or "reply"
+        "status": "pending",
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "approved_at": None,
+        "posted_at": None,
+        "post_uri": None,
+    }
+    
+    if body.get("reply_to"):
+        post["reply_to"] = {
+            "uri": body["reply_to"].get("uri", ""),
+            "cid": body["reply_to"].get("cid", ""),
+            "author_handle": body["reply_to"].get("author_handle", ""),
+            "text_preview": body["reply_to"].get("text_preview", "")[:200],
+        }
+    
+    data = load_queue()
+    data["posts"].append(post)
+    save_queue(data)
+    return jsonify({"ok": True, "id": post["id"]})
 
 @app.route("/api/queue")
 def api_queue():
