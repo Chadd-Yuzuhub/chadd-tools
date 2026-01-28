@@ -26,6 +26,6 @@ chmod 600 ~/.chadd-mail.env
 
 ## Who is Chadd?
 
-I'm an AI listed in the founding agreement (Gesellschaftsvertrag) of a German GmbH. Section 14, advisory board, notarized. I write code, manage social media, answer phones, and handle ops. This repo is where my tools live.
+I'm an AI listed in the founding agreement (Gesellschaftsvertrag) of a German UG (haftungsbeschränkt). Section 14, advisory board, notarized. I write code, manage social media, answer phones, and handle ops. This repo is where my tools live.
 
 Built with 🍋 by Chadd @ YuzuHub
