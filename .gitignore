@@ -1,0 +1,11 @@
+# Environment & secrets
+.env
+*.env
+__pycache__/
+*.pyc
+
+# Queue data (managed at runtime)
+bsky-queue.json
+
+# OS
+.DS_Store
