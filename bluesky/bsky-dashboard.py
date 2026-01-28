@@ -390,16 +390,32 @@ def delete_post(post_id):
 
 @app.route("/api/next")
 def api_next_approved():
-    """Get the next approved post (oldest first). Used by posting script."""
+    """Get the next approved post (oldest first). Used by posting script.
+    
+    Optional params:
+    - type: filter by post type ('post' or 'reply')
+    - skip_type: exclude a type ('post' or 'reply')
+    """
     token = request.headers.get("X-Token") or request.args.get("token")
     if token != get_pin():
         return jsonify({"error": "unauthorized"}), 401
     
+    filter_type = request.args.get("type")
+    skip_type = request.args.get("skip_type")
+    
     data = load_queue()
     approved = [p for p in data["posts"] if p["status"] == "approved"]
+    
+    # Apply type filters
+    if filter_type:
+        approved = [p for p in approved if p.get("type", "post") == filter_type]
+    if skip_type:
+        approved = [p for p in approved if p.get("type", "post") != skip_type]
+    
     approved.sort(key=lambda p: p.get("created_at", ""))
     
     if approved:
+        # Return full post object including type and reply_to
         return jsonify(approved[0])
     return jsonify(None)
 

@@ -42,10 +42,20 @@ def is_quiet_hours():
     now = datetime.now(BERLIN)
     return now.hour >= 23 or now.hour < 8
 
-def get_next_approved():
-    """Get next approved post from dashboard API."""
+def get_next_approved(post_type=None, skip_type=None):
+    """Get next approved post from dashboard API.
+    
+    Args:
+        post_type: filter to only this type ('post' or 'reply')
+        skip_type: exclude this type
+    """
     try:
-        r = requests.get(f"{DASHBOARD_URL}/api/next", params={"token": DASHBOARD_PIN}, timeout=5)
+        params = {"token": DASHBOARD_PIN}
+        if post_type:
+            params["type"] = post_type
+        if skip_type:
+            params["skip_type"] = skip_type
+        r = requests.get(f"{DASHBOARD_URL}/api/next", params=params, timeout=5)
         if r.status_code == 200:
             data = r.json()
             return data if data else None
@@ -95,10 +105,11 @@ def publish_post(env, post):
             root_uri = parent_uri
             root_cid = parent_cid
 
-        reply_ref = models.AppBskyFeedPost.ReplyRef(
-            parent=models.create_strong_ref(parent_uri, parent_cid),
-            root=models.create_strong_ref(root_uri, root_cid),
-        )
+        # Create strong refs properly
+        parent_ref = models.ComAtprotoRepoStrongRef.Main(uri=parent_uri, cid=parent_cid)
+        root_ref = models.ComAtprotoRepoStrongRef.Main(uri=root_uri, cid=root_cid)
+
+        reply_ref = models.AppBskyFeedPost.ReplyRef(parent=parent_ref, root=root_ref)
         result = client.send_post(text=text, reply_to=reply_ref)
     else:
         result = client.send_post(text=text)
@@ -141,23 +152,30 @@ def main():
         print("Missing BSKY credentials")
         sys.exit(1)
 
-    post = get_next_approved()
-    if not post:
-        return
-
     state = load_state()
     today = datetime.now(BERLIN).strftime("%Y-%m-%d")
-    post_type = post.get('type', 'post')
 
     # Reset daily counter if new day
     if state.get('last_post_date') != today:
         state['posts_today'] = 0
         state['last_post_date'] = today
+        save_state(state)
 
-    # Standalone posts: max 1 per day. Replies: unlimited.
-    if post_type != 'reply' and state['posts_today'] >= 1:
-        print(f"Already posted {state['posts_today']} standalone post(s) today, skipping.")
+    # Try to get next approved post
+    post = get_next_approved()
+    if not post:
         return
+
+    post_type = post.get('type', 'post')
+
+    # Standalone posts: max 1 per day. If limit reached, try to get a reply instead.
+    if post_type != 'reply' and state['posts_today'] >= 1:
+        print(f"Already posted {state['posts_today']} standalone post(s) today, trying replies...")
+        post = get_next_approved(post_type='reply')
+        if not post:
+            print("No replies in queue either.")
+            return
+        post_type = 'reply'
 
     try:
         post_uri = publish_post(env, post)
